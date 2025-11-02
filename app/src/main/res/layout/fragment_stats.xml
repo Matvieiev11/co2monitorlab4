@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:gravity="center_horizontal"
+    android:background="@android:color/white">
+
+    <TextView
+        android:id="@+id/textStats"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Завантаження статистики..."
+        android:textSize="18sp"
+        android:textAlignment="center"
+        android:paddingBottom="24dp"
+        android:textColor="@android:color/black" />
+
+    <Button
+        android:id="@+id/btnClear"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Очистити базу даних"
+        android:padding="12dp"
+        android:textAllCaps="false"
+        android:backgroundTint="@android:color/holo_red_light" />
+</LinearLayout>

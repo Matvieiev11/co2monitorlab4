@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/mainFragment"
+        android:title="Сенсор"
+        android:icon="@android:drawable/ic_media_play" />
+    <item
+        android:id="@+id/chartFragment"
+        android:title="Графік"
+        android:icon="@android:drawable/ic_menu_recent_history" />
+    <item
+        android:id="@+id/statsFragment"
+        android:title="Статистика"
+        android:icon="@android:drawable/ic_menu_info_details" />
+</menu>

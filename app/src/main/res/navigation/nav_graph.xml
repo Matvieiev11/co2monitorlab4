@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/mainFragment">
+
+    <fragment
+        android:id="@+id/mainFragment"
+        android:name="com.example.co2monitor.ui.theme.CurrentFragment"
+        android:label="Сенсор"
+        tools:layout="@layout/fragment_current" />
+
+    <fragment
+        android:id="@+id/chartFragment"
+        android:name="com.example.co2monitor.ui.theme.ChartFragment"
+        android:label="Графік"
+        tools:layout="@layout/fragment_chart" />
+
+    <fragment
+        android:id="@+id/statsFragment"
+        android:name="com.example.co2monitor.ui.theme.StatsFragment"
+        android:label="Статистика"
+        tools:layout="@layout/fragment_stats" />
+
+</navigation>
+
