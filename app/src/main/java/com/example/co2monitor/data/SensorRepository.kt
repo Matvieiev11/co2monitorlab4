@@ -20,4 +20,5 @@ class SensorRepository(private val dao: SensorDataDao) {
     suspend fun deleteOlderThan(thresholdMillis: Long) = withContext(Dispatchers.IO) {
         dao.deleteOlderThan(thresholdMillis)
     }
+
 }

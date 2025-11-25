@@ -56,4 +56,10 @@ class StatsFragment : Fragment() {
             textStats.text = "Базу очищено"
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.syncWithCloud()
+    }
+
 }

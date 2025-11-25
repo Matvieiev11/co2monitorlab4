@@ -1,5 +1,6 @@
 package com.example.co2monitor.data
 
+import android.os.Build
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -10,5 +11,10 @@ data class SensorData(
 
     val timestamp: Long,
     val value: Float,
-    val type: String = "CO2"
+    val type: String = "CO2",
+
+    // Нові поля з метаінформацією
+    val deviceId: String = Build.DEVICE,
+    val deviceName: String = Build.MODEL,
+    val osVersion: String = Build.VERSION.RELEASE
 )

@@ -135,4 +135,10 @@ class ChartFragment : Fragment() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.syncWithCloud()
+    }
+
 }

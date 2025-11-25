@@ -8,6 +8,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import com.example.co2monitor.databinding.FragmentCurrentBinding
 import com.example.co2monitor.viewmodel.Co2ViewModel
+import com.example.co2monitor.viewmodel.Co2ViewModelRef
 
 class CurrentFragment : Fragment() {
 
@@ -20,24 +21,25 @@ class CurrentFragment : Fragment() {
     ): View {
         binding = FragmentCurrentBinding.inflate(inflater, container, false)
 
-        // Спостерігаємо за поточним значенням
         viewModel.latestValue.observe(viewLifecycleOwner) { value ->
             binding.tvCurrentValue.text = "CO₂: ${value?.value ?: "---"} ppm"
         }
 
-        // Кнопки
-        binding.btnStart.setOnClickListener {
-            viewModel.startSimulation()
-        }
-
-        binding.btnStop.setOnClickListener {
-            viewModel.stopSimulation()
-        }
-
-        binding.btnClear.setOnClickListener {
-            viewModel.clearOldData()
-        }
-
         return binding.root
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+
+        Co2ViewModelRef.instance = viewModel
+
+        binding.btnStart.setOnClickListener { viewModel.startSimulation() }
+        binding.btnStop.setOnClickListener { viewModel.stopSimulation() }
+        binding.btnClear.setOnClickListener { viewModel.clearOldData() }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.syncWithCloud()
     }
 }

@@ -3,9 +3,11 @@ package com.example.co2monitor.viewmodel
 import android.app.Application
 import androidx.lifecycle.*
 import com.example.co2monitor.data.DatabaseProvider
+import com.example.co2monitor.data.FirebaseRepository
 import com.example.co2monitor.data.SensorData
 import com.example.co2monitor.data.SensorRepository
 import com.example.co2monitor.model.StatsData
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -16,6 +18,11 @@ class Co2ViewModel(application: Application) : AndroidViewModel(application) {
     // Repository
     private val dao = DatabaseProvider.getDatabase(application).sensorDataDao()
     private val repository = SensorRepository(dao)
+
+    private val _syncStatus = MutableLiveData<String>()
+    val syncStatus: LiveData<String> = _syncStatus
+
+    private val firebaseRepo = FirebaseRepository()
 
     // LiveData для UI
     private val _latestValue = MutableLiveData<SensorData?>()
@@ -43,18 +50,53 @@ class Co2ViewModel(application: Application) : AndroidViewModel(application) {
                     value = value,
                     type = "CO2"
                 )
+
+                // 1 — зберігаємо локально
                 repository.insert(data)
                 _latestValue.postValue(data)
 
-                // Підтримуємо базу — видаляємо старіші за 24 години
+                // 2 — синхронізація у Firestore
+                viewModelScope.launch {
+                    try {
+                        firebaseRepo.uploadData(data)
+                    } catch (_: Exception) { }
+                }
+
+                // видаляємо старіші за 24 години
                 val threshold = System.currentTimeMillis() - 24L * 60 * 60 * 1000
                 repository.deleteOlderThan(threshold)
 
-                // Оновимо дані для графіка і статистики (поточні)
                 refreshChartAndStats()
-
                 delay(simulationIntervalMs)
             }
+        }
+    }
+
+    fun syncDownload() {
+        viewModelScope.launch {
+
+            val cloudData = firebaseRepo.downloadAll()
+            val localData = repository.getAll()
+
+            val merged = mutableListOf<SensorData>()
+
+            val groups = (cloudData + localData)
+                .groupBy { it.timestamp / 60000 } // групування по хвилинах
+
+            for ((_, list) in groups) {
+                val avgValue = list.map { it.value }.average().toFloat()
+                val first = list.first()
+
+                merged.add(first.copy(value = avgValue))
+            }
+
+            repository.clearAll()
+
+            merged.forEach {
+                repository.insert(it)
+            }
+
+            loadAllData()
         }
     }
 
@@ -102,8 +144,6 @@ class Co2ViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Внутрішні допоміжні методи
-
     private suspend fun refreshChartAndStats() {
         val all = repository.getAll()
         _chartData.postValue(all)
@@ -123,7 +163,6 @@ class Co2ViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun generateCo2Value(): Float {
-        // Генеруємо значення в межах 400..2000 ppm
         return Random.nextFloat() * (2000f - 400f) + 400f
     }
 
@@ -131,4 +170,28 @@ class Co2ViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
         simulationJob?.cancel()
     }
+
+    fun syncWithCloud() {
+        val user = FirebaseAuth.getInstance().currentUser ?: return
+
+        viewModelScope.launch {
+            try {
+                val cloudData = firebaseRepo.downloadAll()
+                val localData = repository.getAll()
+
+                val merged = (cloudData + localData)
+                    .distinctBy { it.timestamp }
+
+                repository.clearAll()
+                merged.forEach { repository.insert(it) }
+
+                _syncStatus.postValue("Синхронізація успішна")
+                loadAllData()
+
+            } catch (e: Exception) {
+                _syncStatus.postValue("Помилка синхронізації: ${e.message}")
+            }
+        }
+    }
 }
+
