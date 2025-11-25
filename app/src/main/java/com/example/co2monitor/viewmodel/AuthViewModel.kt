@@ -39,6 +39,7 @@ class AuthViewModel : ViewModel() {
     }
 
     private fun onLoginSuccess() {
-        Co2ViewModelRef.instance?.syncDownload()
+        Co2ViewModelRef.instance?.syncWithCloud()
+        Co2ViewModelRef.instance?.startAutoSync()
     }
 }

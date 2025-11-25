@@ -1,6 +1,7 @@
 package com.example.co2monitor.viewmodel
 
 import android.app.Application
+import android.provider.Settings
 import androidx.lifecycle.*
 import com.example.co2monitor.data.DatabaseProvider
 import com.example.co2monitor.data.FirebaseRepository
@@ -12,19 +13,24 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.random.Random
+import android.os.Build
 
 class Co2ViewModel(application: Application) : AndroidViewModel(application) {
+    private val realDeviceId: String =
+        Settings.Secure.getString(
+            application.contentResolver,
+            Settings.Secure.ANDROID_ID
+        ) ?: Build.DEVICE
 
     // Repository
     private val dao = DatabaseProvider.getDatabase(application).sensorDataDao()
     private val repository = SensorRepository(dao)
 
+    private val firebaseRepo = FirebaseRepository()
+
     private val _syncStatus = MutableLiveData<String>()
     val syncStatus: LiveData<String> = _syncStatus
 
-    private val firebaseRepo = FirebaseRepository()
-
-    // LiveData для UI
     private val _latestValue = MutableLiveData<SensorData?>()
     val latestValue: LiveData<SensorData?> = _latestValue
 
@@ -33,36 +39,38 @@ class Co2ViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _stats = MutableLiveData<StatsData>()
     val stats: LiveData<StatsData> = _stats
+    val selectedDevices = MutableLiveData<Set<String>>(emptySet())
 
     // Симуляція
     private var simulationJob: Job? = null
-    private var simulationIntervalMs: Long = 30_000L
+    private var simulationIntervalMs = 30_000L
 
     fun startSimulation(intervalMs: Long = 30_000L) {
         if (simulationJob != null) return
 
         simulationIntervalMs = intervalMs
         simulationJob = viewModelScope.launch {
+
             while (true) {
-                val value = generateCo2Value()
+
                 val data = SensorData(
                     timestamp = System.currentTimeMillis(),
-                    value = value,
-                    type = "CO2"
+                    value = generateCo2Value(),
+                    type = "CO2",
+
+                    deviceId = realDeviceId,
+                    deviceName = Build.MODEL,
+                    osVersion = Build.VERSION.RELEASE
                 )
 
-                // 1 — зберігаємо локально
                 repository.insert(data)
                 _latestValue.postValue(data)
 
-                // 2 — синхронізація у Firestore
-                viewModelScope.launch {
-                    try {
-                        firebaseRepo.uploadData(data)
-                    } catch (_: Exception) { }
+                launch {
+                    try { firebaseRepo.uploadData(data) } catch (_: Exception) {}
                 }
 
-                // видаляємо старіші за 24 години
+                // Видаляємо старі дані
                 val threshold = System.currentTimeMillis() - 24L * 60 * 60 * 1000
                 repository.deleteOlderThan(threshold)
 
@@ -72,46 +80,107 @@ class Co2ViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun syncDownload() {
-        viewModelScope.launch {
-
-            val cloudData = firebaseRepo.downloadAll()
-            val localData = repository.getAll()
-
-            val merged = mutableListOf<SensorData>()
-
-            val groups = (cloudData + localData)
-                .groupBy { it.timestamp / 60000 } // групування по хвилинах
-
-            for ((_, list) in groups) {
-                val avgValue = list.map { it.value }.average().toFloat()
-                val first = list.first()
-
-                merged.add(first.copy(value = avgValue))
-            }
-
-            repository.clearAll()
-
-            merged.forEach {
-                repository.insert(it)
-            }
-
-            loadAllData()
-        }
-    }
-
     fun stopSimulation() {
         simulationJob?.cancel()
         simulationJob = null
     }
 
-    fun clearOldData() {
-        viewModelScope.launch {
-            repository.clearAll()
-            _latestValue.postValue(null)
-            _chartData.postValue(emptyList())
-            _stats.postValue(StatsData())
+    private var syncJob: Job? = null
+
+    fun startAutoSync() {
+        if (syncJob != null) return
+
+        syncJob = viewModelScope.launch {
+            while (true) {
+                syncWithCloud()
+                delay(15_000)
+            }
         }
+    }
+
+    fun syncWithCloud() {
+        val user = FirebaseAuth.getInstance().currentUser ?: return
+
+        viewModelScope.launch {
+            try {
+                val cloud = firebaseRepo.downloadAll()
+                val local = repository.getAll()
+
+                val merged = mergeData(local, cloud)
+
+                repository.clearAll()
+                merged.forEach { repository.insert(it) }
+
+                _syncStatus.postValue("Синхронізація успішна")
+                loadAllData()
+
+            } catch (e: Exception) {
+                _syncStatus.postValue("Помилка: ${e.message}")
+            }
+        }
+    }
+
+    private fun mergeData(local: List<SensorData>, cloud: List<SensorData>): List<SensorData> {
+
+        return (local + cloud)
+            .groupBy { Pair(it.deviceId, it.timestamp / 60000) }
+            .map { (_, list) ->
+
+                val avg = list.map { it.value }.average().toFloat()
+                val first = list.first()
+
+                first.copy(value = avg)
+            }
+    }
+
+    // Фільтр пристроїв
+    fun setDeviceFilter(devices: Set<String>) {
+        selectedDevices.value = devices
+        loadAllData()
+    }
+
+    fun loadAllData() {
+        viewModelScope.launch {
+            val all = repository.getAll()
+            _chartData.postValue(all)
+            calculateStats(all)
+            if (all.isNotEmpty()) _latestValue.postValue(all.last())
+        }
+    }
+
+    fun loadDataForHours(hours: Int) {
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            val cutoff = now - hours * 3600_000L
+
+            val list = repository.getAll().filter { it.timestamp >= cutoff }
+
+            _chartData.postValue(list)
+            calculateStats(list)
+            if (list.isNotEmpty()) _latestValue.postValue(list.last())
+        }
+    }
+
+    private suspend fun refreshChartAndStats() {
+        val all = repository.getAll()
+        _chartData.postValue(all)
+        calculateStats(all)
+    }
+
+    private fun calculateStats(list: List<SensorData>) {
+        if (list.isEmpty()) {
+            _stats.postValue(StatsData())
+            return
+        }
+
+        _stats.postValue(
+            StatsData(
+                min = list.minOf { it.value },
+                max = list.maxOf { it.value },
+                avg = list.map { it.value }.average(),
+                count = list.size
+            )
+        )
     }
 
     fun clearDatabase() {
@@ -121,77 +190,15 @@ class Co2ViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Завантажити всі дані (для кнопки "Показати всі дані")
-    fun loadAllData() {
-        viewModelScope.launch {
-            val all = repository.getAll()
-            _chartData.postValue(all)
-            calculateAndPostStats(all)
-            if (all.isNotEmpty()) _latestValue.postValue(all.last())
-        }
-    }
-
-    // Завантажити дані за останні hours годин
-    fun loadDataForHours(hours: Int) {
-        viewModelScope.launch {
-            val all = repository.getAll()
-            val now = System.currentTimeMillis()
-            val cutoff = now - hours * 60L * 60L * 1000L
-            val filtered = all.filter { it.timestamp >= cutoff }
-            _chartData.postValue(filtered)
-            calculateAndPostStats(filtered)
-            if (filtered.isNotEmpty()) _latestValue.postValue(filtered.last())
-        }
-    }
-
-    private suspend fun refreshChartAndStats() {
-        val all = repository.getAll()
-        _chartData.postValue(all)
-        calculateAndPostStats(all)
-    }
-
-    private fun calculateAndPostStats(list: List<SensorData>) {
-        if (list.isEmpty()) {
-            _stats.postValue(StatsData())
-            return
-        }
-        val min = list.minOf { it.value }
-        val max = list.maxOf { it.value }
-        val avg = list.map { it.value }.average()
-        val count = list.size
-        _stats.postValue(StatsData(min = min, max = max, avg = avg, count = count))
+    override fun onCleared() {
+        simulationJob?.cancel()
+        syncJob?.cancel()
+        super.onCleared()
     }
 
     private fun generateCo2Value(): Float {
         return Random.nextFloat() * (2000f - 400f) + 400f
     }
-
-    override fun onCleared() {
-        super.onCleared()
-        simulationJob?.cancel()
-    }
-
-    fun syncWithCloud() {
-        val user = FirebaseAuth.getInstance().currentUser ?: return
-
-        viewModelScope.launch {
-            try {
-                val cloudData = firebaseRepo.downloadAll()
-                val localData = repository.getAll()
-
-                val merged = (cloudData + localData)
-                    .distinctBy { it.timestamp }
-
-                repository.clearAll()
-                merged.forEach { repository.insert(it) }
-
-                _syncStatus.postValue("Синхронізація успішна")
-                loadAllData()
-
-            } catch (e: Exception) {
-                _syncStatus.postValue("Помилка синхронізації: ${e.message}")
-            }
-        }
-    }
 }
+
 

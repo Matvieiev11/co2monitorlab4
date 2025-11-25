@@ -42,7 +42,7 @@ class RegisterFragment : Fragment() {
 
             authViewModel.register(email, pass) { success, error ->
                 if (success) {
-                    findNavController().navigate(R.id.action_registerFragment_to_mainFragment)
+                    findNavController().navigate(R.id.currentFragment)
                 } else {
                     Toast.makeText(requireContext(), "Register failed: $error", Toast.LENGTH_LONG).show()
                 }

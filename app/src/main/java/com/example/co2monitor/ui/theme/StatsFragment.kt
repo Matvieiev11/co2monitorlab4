@@ -60,6 +60,6 @@ class StatsFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         viewModel.syncWithCloud()
+        viewModel.startAutoSync()
     }
-
 }

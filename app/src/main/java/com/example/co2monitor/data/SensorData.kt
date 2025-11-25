@@ -13,7 +13,6 @@ data class SensorData(
     val value: Float,
     val type: String = "CO2",
 
-    // Нові поля з метаінформацією
     val deviceId: String = Build.DEVICE,
     val deviceName: String = Build.MODEL,
     val osVersion: String = Build.VERSION.RELEASE

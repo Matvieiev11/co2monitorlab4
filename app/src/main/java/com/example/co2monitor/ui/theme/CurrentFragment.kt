@@ -30,16 +30,14 @@ class CurrentFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-
-        Co2ViewModelRef.instance = viewModel
-
         binding.btnStart.setOnClickListener { viewModel.startSimulation() }
         binding.btnStop.setOnClickListener { viewModel.stopSimulation() }
-        binding.btnClear.setOnClickListener { viewModel.clearOldData() }
+        binding.btnClear.setOnClickListener { viewModel.clearDatabase() }
     }
 
     override fun onResume() {
         super.onResume()
         viewModel.syncWithCloud()
+        viewModel.startAutoSync()
     }
 }

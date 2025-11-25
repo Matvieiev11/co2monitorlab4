@@ -42,7 +42,7 @@ class LoginFragment : Fragment() {
 
             authViewModel.login(email, pass) { success, error ->
                 if (success) {
-                    findNavController().navigate(R.id.action_loginFragment_to_mainFragment)
+                    findNavController().navigate(R.id.currentFragment)
                 } else {
                     Toast.makeText(requireContext(), "Login failed: $error", Toast.LENGTH_LONG).show()
                 }
