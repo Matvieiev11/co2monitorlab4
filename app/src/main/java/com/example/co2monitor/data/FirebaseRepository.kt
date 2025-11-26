@@ -20,37 +20,39 @@ class FirebaseRepository {
 
     suspend fun uploadData(data: SensorData) {
         if (!requireUser()) return
+
+        val id = "${data.deviceId}_${data.timestamp}"
+
         userCollection()
-            .document(data.timestamp.toString())
+            .document(id)
             .set(data)
             .await()
     }
 
     suspend fun downloadAll(): List<SensorData> {
         if (!requireUser()) return emptyList()
+
         val snapshot = userCollection().get().await()
         return snapshot.toObjects(SensorData::class.java)
     }
 
-    suspend fun clearCloud() {
+    suspend fun deleteOldCloudData() {
         if (!requireUser()) return
-        val batch = firestore.batch()
+
+        val threshold = System.currentTimeMillis() - 24L * 60 * 60 * 1000
+
         val docs = userCollection().get().await()
 
-        for (doc in docs.documents) {
-            batch.delete(doc.reference)
-        }
-        batch.commit().await()
-    }
-
-    suspend fun uploadAll(list: List<SensorData>) {
-        if (!requireUser()) return
         val batch = firestore.batch()
 
-        list.forEach { data ->
-            val ref = userCollection().document(data.timestamp.toString())
-            batch.set(ref, data)
+        for (doc in docs.documents) {
+            val data = doc.toObject(SensorData::class.java) ?: continue
+
+            if (data.timestamp < threshold) {
+                batch.delete(doc.reference)
+            }
         }
+
         batch.commit().await()
     }
 
@@ -58,4 +60,30 @@ class FirebaseRepository {
         clearCloud()
         uploadAll(list)
     }
+
+    suspend fun uploadAll(list: List<SensorData>) {
+        if (!requireUser()) return
+
+        val batch = firestore.batch()
+
+        list.forEach { data ->
+            val id = "${data.deviceId}_${data.timestamp}"
+            batch.set(userCollection().document(id), data)
+        }
+        batch.commit().await()
+    }
+
+    suspend fun clearCloud() {
+        if (!requireUser()) return
+
+        val snapshot = userCollection().get().await()
+        val batch = firestore.batch()
+
+        for (doc in snapshot.documents) {
+            batch.delete(doc.reference)
+        }
+
+        batch.commit().await()
+    }
 }
+

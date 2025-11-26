@@ -6,11 +6,13 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
 import com.example.co2monitor.R
 import com.example.co2monitor.databinding.FragmentRegisterBinding
 import com.example.co2monitor.viewmodel.AuthViewModel
+import com.example.co2monitor.viewmodel.Co2ViewModel
 
 class RegisterFragment : Fragment() {
 
@@ -18,10 +20,10 @@ class RegisterFragment : Fragment() {
     private val binding get() = _binding!!
 
     private val authViewModel: AuthViewModel by viewModels({ requireActivity() })
+    private val co2ViewModel: Co2ViewModel by activityViewModels()
 
     override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
+        inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
         _binding = FragmentRegisterBinding.inflate(inflater, container, false)
@@ -42,6 +44,11 @@ class RegisterFragment : Fragment() {
 
             authViewModel.register(email, pass) { success, error ->
                 if (success) {
+
+                    co2ViewModel.syncWithCloud()
+                    co2ViewModel.startAutoSync()
+                    co2ViewModel.loadAllData()
+
                     findNavController().navigate(R.id.currentFragment)
                 } else {
                     Toast.makeText(requireContext(), "Register failed: $error", Toast.LENGTH_LONG).show()

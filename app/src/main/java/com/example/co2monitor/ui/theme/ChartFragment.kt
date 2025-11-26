@@ -21,6 +21,7 @@ import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.formatter.ValueFormatter
 import com.github.mikephil.charting.utils.EntryXComparator
+import com.github.mikephil.charting.interfaces.datasets.ILineDataSet
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -64,7 +65,11 @@ class ChartFragment : Fragment() {
         btnDay.setOnClickListener { viewModel.loadDataForHours(24) }
         btnWeek.setOnClickListener { viewModel.loadDataForHours(24 * 7) }
 
-        btnSelectDevices.setOnClickListener { showDeviceFilterDialog() }
+        btnSelectDevices.setOnClickListener {
+            viewModel.syncWithCloud()
+            viewModel.loadAllData()
+            showDeviceFilterDialog()
+        }
     }
 
     private fun setupObservers() {
@@ -93,11 +98,10 @@ class ChartFragment : Fragment() {
         baseTimeMillis = data.minOf { it.timestamp }
 
         val devices = data.groupBy { it.deviceId }
-
         val selected = viewModel.selectedDevices.value ?: emptySet()
 
         val colorList = listOf(Color.RED, Color.BLUE, Color.GREEN, Color.MAGENTA, Color.CYAN)
-        val dataSets = mutableListOf<LineDataSet>()
+        val dataSets = mutableListOf<ILineDataSet>()
 
         var colorIndex = 0
 
@@ -127,17 +131,17 @@ class ChartFragment : Fragment() {
             return
         }
 
-        chart.data = LineData(dataSets as List<LineDataSet>)
+        chart.data = LineData(dataSets)
         chart.xAxis.valueFormatter = createXAxisFormatter()
         chart.invalidate()
     }
 
     private fun showDeviceFilterDialog() {
-        val allDevices = viewModel.chartData.value?.map { it.deviceId }?.toSet() ?: emptySet()
+        val deviceSet = viewModel.allDevicesLive.value ?: emptySet()
 
-        if (allDevices.isEmpty()) return
+        if (deviceSet.isEmpty()) return
 
-        val deviceList = allDevices.toList()
+        val deviceList = deviceSet.toList().sorted()
         val selectedSet = viewModel.selectedDevices.value ?: emptySet()
         val checked = BooleanArray(deviceList.size) { deviceList[it] in selectedSet }
 
@@ -188,3 +192,4 @@ class ChartFragment : Fragment() {
         viewModel.startAutoSync()
     }
 }
+

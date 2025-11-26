@@ -16,6 +16,7 @@ import kotlin.random.Random
 import android.os.Build
 
 class Co2ViewModel(application: Application) : AndroidViewModel(application) {
+
     private val realDeviceId: String =
         Settings.Secure.getString(
             application.contentResolver,
@@ -25,9 +26,9 @@ class Co2ViewModel(application: Application) : AndroidViewModel(application) {
     // Repository
     private val dao = DatabaseProvider.getDatabase(application).sensorDataDao()
     private val repository = SensorRepository(dao)
-
     private val firebaseRepo = FirebaseRepository()
 
+    // LiveData
     private val _syncStatus = MutableLiveData<String>()
     val syncStatus: LiveData<String> = _syncStatus
 
@@ -37,8 +38,11 @@ class Co2ViewModel(application: Application) : AndroidViewModel(application) {
     private val _chartData = MutableLiveData<List<SensorData>>()
     val chartData: LiveData<List<SensorData>> = _chartData
 
+    val allDevicesLive = MutableLiveData<Set<String>>(emptySet())
+
     private val _stats = MutableLiveData<StatsData>()
     val stats: LiveData<StatsData> = _stats
+
     val selectedDevices = MutableLiveData<Set<String>>(emptySet())
 
     // Симуляція
@@ -49,15 +53,13 @@ class Co2ViewModel(application: Application) : AndroidViewModel(application) {
         if (simulationJob != null) return
 
         simulationIntervalMs = intervalMs
+
         simulationJob = viewModelScope.launch {
-
             while (true) {
-
                 val data = SensorData(
                     timestamp = System.currentTimeMillis(),
                     value = generateCo2Value(),
                     type = "CO2",
-
                     deviceId = realDeviceId,
                     deviceName = Build.MODEL,
                     osVersion = Build.VERSION.RELEASE
@@ -70,11 +72,11 @@ class Co2ViewModel(application: Application) : AndroidViewModel(application) {
                     try { firebaseRepo.uploadData(data) } catch (_: Exception) {}
                 }
 
-                // Видаляємо старі дані
                 val threshold = System.currentTimeMillis() - 24L * 60 * 60 * 1000
                 repository.deleteOlderThan(threshold)
 
                 refreshChartAndStats()
+
                 delay(simulationIntervalMs)
             }
         }
@@ -98,6 +100,11 @@ class Co2ViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun stopAutoSync() {
+        syncJob?.cancel()
+        syncJob = null
+    }
+
     fun syncWithCloud() {
         val user = FirebaseAuth.getInstance().currentUser ?: return
 
@@ -108,10 +115,15 @@ class Co2ViewModel(application: Application) : AndroidViewModel(application) {
 
                 val merged = mergeData(local, cloud)
 
+                // Оновлюємо список пристроїв
+                val devices = merged.map { it.deviceId }.toSet()
+                allDevicesLive.postValue(devices)
+
                 repository.clearAll()
                 merged.forEach { repository.insert(it) }
 
                 _syncStatus.postValue("Синхронізація успішна")
+
                 loadAllData()
 
             } catch (e: Exception) {
@@ -121,19 +133,15 @@ class Co2ViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun mergeData(local: List<SensorData>, cloud: List<SensorData>): List<SensorData> {
-
         return (local + cloud)
-            .groupBy { Pair(it.deviceId, it.timestamp / 60000) }
+            .groupBy { Pair(it.deviceId, it.timestamp / 60000) } // device + minute
             .map { (_, list) ->
-
                 val avg = list.map { it.value }.average().toFloat()
                 val first = list.first()
-
                 first.copy(value = avg)
             }
     }
 
-    // Фільтр пристроїв
     fun setDeviceFilter(devices: Set<String>) {
         selectedDevices.value = devices
         loadAllData()
@@ -142,8 +150,12 @@ class Co2ViewModel(application: Application) : AndroidViewModel(application) {
     fun loadAllData() {
         viewModelScope.launch {
             val all = repository.getAll()
+
+            allDevicesLive.postValue(all.map { it.deviceId }.toSet())
+
             _chartData.postValue(all)
             calculateStats(all)
+
             if (all.isNotEmpty()) _latestValue.postValue(all.last())
         }
     }
@@ -157,6 +169,7 @@ class Co2ViewModel(application: Application) : AndroidViewModel(application) {
 
             _chartData.postValue(list)
             calculateStats(list)
+
             if (list.isNotEmpty()) _latestValue.postValue(list.last())
         }
     }
@@ -195,10 +208,10 @@ class Co2ViewModel(application: Application) : AndroidViewModel(application) {
         syncJob?.cancel()
         super.onCleared()
     }
-
     private fun generateCo2Value(): Float {
         return Random.nextFloat() * (2000f - 400f) + 400f
     }
 }
+
 
 
